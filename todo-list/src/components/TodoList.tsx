@@ -1,195 +1,243 @@
 'use client';
 
-import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import React, { useState } from 'react';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import styled from 'styled-components';
 
-const StyledTodoList = styled.div`
+type StatusType = '미시작' | '진행중' | '완료';
+
+interface Todo {
+  id: string;
+  text: string;
+}
+
+interface DragItem {
+  id: string;
+  fromColumn: StatusType;
+}
+
+export default function KanbanBoard() {
+  const [board, setBoard] = useState<Record<StatusType, Todo[]>>({
+    미시작: [],
+    진행중: [],
+    완료: [],
+  });
+
+  const [input, setInput] = useState('');
+
+  // 할 일 추가
+  const addTodo = () => {
+    if (!input.trim()) return;
+    const newTodo: Todo = { id: Date.now().toString(), text: input };
+    setBoard((prevBoard) => ({
+      ...prevBoard,
+      미시작: [...prevBoard.미시작, newTodo],
+    }));
+    setInput('');
+  };
+
+  // 할 일 이동
+  const moveTodo = (id: string, fromColumn: StatusType, toColumn: StatusType) => {
+    const fromItems = [...board[fromColumn]];
+    const toItems = [...board[toColumn]];
+
+    const index = fromItems.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const [movedItem] = fromItems.splice(index, 1);
+      toItems.push(movedItem);
+
+      setBoard({
+        ...board,
+        [fromColumn]: fromItems,
+        [toColumn]: toItems,
+      });
+    }
+  };
+
+  // 할 일 삭제
+  const deleteTodo = (id: string, column: StatusType) => {
+    setBoard((prevBoard) => ({
+      ...prevBoard,
+      [column]: prevBoard[column].filter((todo) => todo.id !== id),
+    }));
+  };
+
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <MainWrapper>
+        <h2>Todo List</h2>
+        <InputWrapper>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="할 일을 입력하세요"
+          />
+          <button onClick={addTodo}>추가</button>
+        </InputWrapper>
+        <BoardWrapper>
+          {Object.entries(board).map(([status, todos]) => (
+            <KanbanColumn
+              key={status}
+              status={status as StatusType}
+              todos={todos}
+              moveTodo={moveTodo}
+              deleteTodo={deleteTodo}
+            />
+          ))}
+        </BoardWrapper>
+      </MainWrapper>
+    </DndProvider>
+  );
+}
+
+function KanbanColumn({
+  status,
+  todos,
+  moveTodo,
+  deleteTodo,
+}: {
+  status: StatusType;
+  todos: Todo[];
+  moveTodo: (id: string, fromColumn: StatusType, toColumn: StatusType) => void;
+  deleteTodo: (id: string, column: StatusType) => void;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [, drop] = useDrop({
+    accept: 'TODO',
+    drop: (item: DragItem) => {
+      if (item.fromColumn !== status) {
+        moveTodo(item.id, item.fromColumn, status);
+      }
+    },
+  });
+
+  drop(ref);
+
+  return (
+    <Column ref={ref}>
+      <h3>{status}</h3>
+      {todos.map((todo) => (
+        <KanbanCard
+          key={todo.id}
+          todo={todo}
+          fromColumn={status}
+          deleteTodo={deleteTodo}
+        />
+      ))}
+    </Column>
+  );
+}
+
+function KanbanCard({
+  todo,
+  fromColumn,
+  deleteTodo,
+}: {
+  todo: Todo;
+  fromColumn: StatusType;
+  deleteTodo: (id: string, column: StatusType) => void;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [, drag] = useDrag({
+    type: 'TODO',
+    item: { id: todo.id, fromColumn },
+  });
+
+  drag(ref);
+
+  return (
+    <Card ref={ref}>
+      <p>{todo.text}</p>
+      <button onClick={() => deleteTodo(todo.id, fromColumn)}>X</button>
+    </Card>
+  );
+}
+
+const MainWrapper = styled.div`
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
-  background-color: #f9f2f9;
-  height: 100vh;
-
-  h2 {
-    font-size: 2rem;
-    color: #333;
-    margin-bottom: 20px;
-  }
-
-  .TodoList_cancel {
-    text-decoration: line-through;
-    color: #ff6b6b;
-  }
-`;
-
-const TodoListWrapper = styled.div`
-  background-color: #ffffff;
-  border: none;
-  border-radius: 20px; 
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+  gap: 20px;
   padding: 20px;
-  width: 400px;
-  text-align: center;
+`;
 
-  hr {
+const InputWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  width: 100%;
+
+  input {
+    padding: 10px;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    width: 70%;
+  }
+
+  button {
+    padding: 10px 20px;
+    background-color: #efaed9;
+    color: white;
     border: none;
-    border-top: 1px solid #ddd;
-    margin: 20px 0;
+    border-radius: 20px;
+    cursor: pointer;
+
+    &:hover {
+      background-color: #f290d2;
+    }
   }
 `;
 
-const TodoInput = styled.input`
-  border-radius: 20px;
-  border: 1px solid #ddd;
+const BoardWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+`;
+
+const Column = styled.div`
+  flex: 1;
+  background-color: #ebdae6;
   padding: 10px;
-  width: calc(100% - 60px);
-  box-sizing: border-box;
-  font-size: 1rem;
-  margin-right: 10px;
-`;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  min-width: 150px; 
+  max-width: 250px;
 
-const AddButton = styled.button`
-  background-color: #f2728c;
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  padding: 10px 20px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-
-  &:hover {
-    background-color: #e55a5a;
+  h3 {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 1.2rem;
   }
 `;
 
-const TodoItem = styled.div`
+const Card = styled.div`
+  background-color: white;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
-  border-bottom: 1px solid #ddd;
 
   p {
     margin: 0;
     font-size: 1rem;
   }
 
-  select {
-    border-radius: 10px;
-    border: 1px solid #ddd;
-    padding: 5px;
-    font-size: 0.9rem;
-    margin-right: 1rem;
-    cursor: pointer;
-
-  }
-
   button {
-    background-color: transparent;
+    background-color: white;
+    color: #e74c3c;
     border: none;
-    font-size: 1rem;
-    color: #f2728c;
+    padding: 5px;
     cursor: pointer;
 
     &:hover {
-    color: #e55a5a;
-  }
-  }
-`;
-
-const ClearButton = styled.button`
-  background-color: #fff;
-  border: 2px solid #f2728c;
-  color: #f2728c;
-  border-radius: 20px;
-  padding: 10px 20px;
-  font-size: 1rem;
-  cursor: pointer;
-  margin-top: 20px;
-
-  &:hover {
-    background-color: #f2728c;
-    color: #fff;
+      color: #c0392b;
+    }
   }
 `;
-
-type StatusType = '미시작' | '진행중' | '완료';
-
-interface Todo {
-  id: number;
-  text: string;
-  status: StatusType;
-}
-
-export default function TodoList() {
-  const [todoList, setTodoList] = useState<Todo[]>([]);
-  const [input, setInput] = useState<string>('');
-
-  const addTodo = () => {
-    if (!input.trim()) return; // 빈 입력 방지
-    const stringId = uuidv4();
-    const numericId = parseInt(stringId.replace(/-/g, '').slice(0,8), 16);
-    setTodoList([
-      ...todoList,
-      { id: numericId, text: input, status: '미시작' },
-    ]);
-    setInput('');
-  };
-
-  const deleteTodo = (id: number) => {
-    setTodoList(todoList.filter((todo) => todo.id !== id));
-  };
-
-  const changeTodoStatus = (id: number, status: StatusType) => {
-    setTodoList(
-      todoList.map((todo) =>
-        todo.id === id ? { ...todo, status } : todo
-      )
-    );
-  };
-
-  const handleClearAll = () => {
-    setTodoList([]);
-  };
-
-  return (
-    <StyledTodoList>
-      <TodoListWrapper>
-        <h2>Todo List</h2>
-        <div style={{ display: 'flex', marginBottom: '20px' }}>
-          <TodoInput
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="할 일을 입력해주세요"
-          />
-          <AddButton onClick={addTodo}>+</AddButton>
-        </div>
-        <hr />
-        {todoList.map(({ id, text, status }) => (
-          <TodoItem key={id}>
-            <p className={status === '완료' ? 'TodoList_cancel' : ''}>{text}</p>
-            <div>
-                <select
-                  value={status}
-                  onChange={(e) =>
-                    changeTodoStatus(id, e.target.value as StatusType)
-                  }
-                >
-                  <option value="미시작">미시작</option>
-                  <option value="진행중">진행중</option>
-                  <option value="완료">완료</option>
-                </select>
-                <button onClick={() => deleteTodo(id)}>x</button>
-            </div>
-          </TodoItem>
-        ))}
-        {todoList.length > 0 && (
-          <ClearButton onClick={handleClearAll}>전체 지우기</ClearButton>
-        )}
-      </TodoListWrapper>
-    </StyledTodoList>
-  );
-}
